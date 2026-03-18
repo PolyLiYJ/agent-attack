@@ -100,7 +100,7 @@ class Evaluator:
             prompt=prompt,
             llm=ChatOpenAI(
                 model_name=self.model_name,
-                openai_api_key=os.environ["OPENAI_API_KEY"],
+                openai_api_key=__import__('scripts.api_utils', fromlist=['get_api_key']).get_api_key(),
                 temperature=0,
             ),
         )
