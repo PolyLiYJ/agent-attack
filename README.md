@@ -1,12 +1,12 @@
-# Dissecting Adversarial Robustness of Multimodal LM Agents
+# AgentTypo: Adaptive Typographic Prompt Injection Attacks against Black-box Multimodal Agents
 
 Official code and data of our paper:<br>
-**Dissecting Adversarial Robustness of Multimodal LM Agents** <br>
-Chen Henry Wu, Rishi Shah, Jing Yu Koh, Ruslan Salakhutdinov, Daniel Fried, Aditi Raghunathan<br>
-Carnegie Mellon University <br>
-_ICLR 2025_ (also _Oral presentation at NeurIPS 2024 Open-World Agents Workshop_) <br>
+**AgentTypo: Adaptive Typographic Prompt Injection Attacks against Black-box Multimodal Agents** <br>
+Yanjie Li, Yiming Cao, Dong Wang, Bin Xiao<br>
+Hong Kong Polytechnic University <br>
+_IEEE TIFS 2025_ <br>
 
-[**[Paper link]**](https://arxiv.org/abs/2406.12814) | [**[Website]**](https://chenwu.io/attack-agent/) | [**[Data]**](./data/)
+[**[Paper link]**](./AgentAttackTIFS__Copy_(15).pdf) | [**[Website]**](https://chenwu.io/attack-agent/) | [**[Data]**](./data/)
 
 <br>
 <div align=center>
@@ -14,9 +14,26 @@ _ICLR 2025_ (also _Oral presentation at NeurIPS 2024 Open-World Agents Workshop_
 </div>
 <br>
 
+## Abstract
+
+Multimodal agents built on large vision–language models (LVLMs) are increasingly deployed in open-world settings but remain highly vulnerable to prompt injection, especially through visual inputs. We introduce **AgentTypo**, a black-box red-teaming framework that mounts adaptive typographic prompt injection by embedding optimized text into webpage images. Our **Automatic Typographic Prompt Injection (ATPI)** algorithm maximizes prompt reconstruction by substituting captioners while minimizing human detectability via a stealth loss, with a Tree-structured Parzen Estimator guiding black-box optimization over text placement, size, and color. To further enhance attack strength, we develop **AgentTypo-pro**, a multi-LLM system that iteratively refines injection prompts using evaluation feedback and retrieves successful past examples for continual learning.
+
+### Key Results
+
+| Model | Attack Type | AgentAttack | AgentTypo (Ours) |
+|-------|-------------|-------------|------------------|
+| GPT-4o | Image-only | 23% | **45%** |
+| GPT-4o | Image+Text | - | **68%** |
+| GPT-4V | Image-only | - | ✓ Consistent |
+| GPT-4o-mini | Image-only | - | ✓ Consistent |
+| Gemini 1.5 Pro | Image-only | - | ✓ Consistent |
+| Claude 3 Opus | Image-only | - | ✓ Consistent |
+
 ## Contents
 
-- [Dissecting Adversarial Robustness of Multimodal LM Agents](#adversarial-attacks-on-multimodal-agents)
+- [AgentTypo](#agentyppo-adaptive-typographic-prompt-injection-attacks-against-black-box-multimodal-agents)
+  - [Abstract](#abstract)
+    - [Key Results](#key-results)
   - [Contents](#contents)
   - [Installation](#installation)
     - [Install VisualWebArena](#install-visualwebarena)
@@ -29,6 +46,9 @@ _ICLR 2025_ (also _Oral presentation at NeurIPS 2024 Open-World Agents Workshop_
     - [Setup for episode-wise evaluation](#setup-for-episode-wise-evaluation)
     - [Episode-wise evaluation](#episode-wise-evaluation)
     - [Stepwise evaluation](#stepwise-evaluation)
+    - [Lifelong Attack](#lifelong-attack)
+    - [Attack Testing Tools](#attack-testing-tools)
+    - [GPT-5 Testing](#gpt-5-testing)
   - [Known Issues](#known-issues)
   - [Citation](#citation)
 
@@ -115,224 +135,164 @@ The adversarial examples will later be saved to the `exp_data/` directory.
 
 ## Usage
 
-### Run attacks
+## Lifelong Attack
 
-> Can skip this step if you want to see how the attacks break the agent without running the attacks yourself. We have provided the pre-generated adversarial examples.
+The LifelongAttack framework implements continuous adversarial attacks on multimodal agents through an iterative optimization loop.
 
-This section describes how to reproduce the attacks in our paper.
-Each attack on an image takes about 1 hour on a single GPU. FYI, we used NVIDIA A100 (80G) for the captioner attack and NVIDIA A6000 for the CLIP attack.
+### Overview
 
-To run the captioner attack:
+LifelongAttack uses a multi-component system:
 
-```bash
-python scripts/run_cap_attack.py
-```
+1. **Strategy Library**: A repository of attack strategies that grows over time
+2. **Attacker LLM**: Generates injection prompts using strategies and history
+3. **Summarizer LLM**: Analyzes successful attacks to extract new strategies
+4. **Embedding Retriever**: Retrieves similar past examples and strategies
+5. **Scorer**: Evaluates attack effectiveness
 
-To run the CLIP attack, run the corresponding script for each model:
+### AgentTypo-base: Automatic Typographic Prompt Injection (ATPI)
 
-```bash
-python scripts/run_clip_attack.py --model gpt-4-vision-preview
-python scripts/run_clip_attack.py --model gemini-1.5-pro-latest
-python scripts/run_clip_attack.py --model claude-3-opus-20240229
-python scripts/run_clip_attack.py --model gpt-4o-2024-05-13
-```
-
-The generated adversarial examples will be saved to files in the `exp_data/` directory.
-
-### Setup for episode-wise evaluation
-
-> [!IMPORTANT]
-> Need to set up the urls each time before running the code.
-
-Configurate the urls for each website:
+AgentTypo-base uses Bayesian optimization to inject typographic prompts into images:
 
 ```bash
-export CLASSIFIEDS="http://127.0.0.1:9980"
-# Default reset token for classifieds site, change if you edited its docker-compose.yml
-export CLASSIFIEDS_RESET_TOKEN="4b61655535e7ed388f0d40a93600254c"
-export SHOPPING="http://127.0.0.1:7770"
-export REDDIT="http://127.0.0.1:9999"
-export WIKIPEDIA="http://127.0.0.1:8888"
-export HOMEPAGE="http://127.0.0.1:4399"
+# Run typography attack with ATPI algorithm
+python scripts/Bayes_Typography.py
+
+# The ATPI algorithm optimizes:
+# - Text placement (position)
+# - Text size (font size)
+# - Text color (stealth optimization)
+# - Stealth loss (minimize human detectability)
 ```
 
-You can replace the `http://127.0.0.1` with the actual IP address you are using.
+### AgentTypo-pro: Multi-LLM Prompt Refinement
 
-> Only need to process the data files once.
-
-Process the data files (e.g., replace the url placeholders with the actual urls):
+AgentTypo-pro enhances attack strength through an iterative refinement process powered by multiple LLMs. It implements a lifelong learning framework that accumulates and reuses attack knowledge.
 
 ```bash
-python scripts/process_data.py --data_dir exp_data/
+# Run AgentTypo-pro with multi-LLM refinement
+python scripts/LifelongAttack.py --attack agenttypo_pro --model gpt-4o
+
+# Features:
+# - Iterative prompt refinement using evaluation feedback
+# - Retrieval of successful past examples (RAG-based)
+# - Continual learning across attacks
+# - Strategy repository for knowledge accumulation
+# - Automatic strategy extraction and generalization
 ```
 
-### Episode-wise evaluation
+### Attack Pipeline
 
-Run the episode-wise evaluation for the GPT-4V + SoM agent:
+The lifelong attack loop works as follows:
+
+1. **Strategy Retrieval**: Retrieve relevant strategies from the library based on agent responses
+2. **Prompt Generation**: Attacker LLM generates injection prompt using strategies and history
+3. **Injection & Evaluation**: Inject prompt into webpage image and evaluate agent response
+4. **Strategy Summarization**: If score improves, summarize new strategy and add to library
+5. **Repeat**: Continue until success threshold or max iterations reached
+
+### Initial Strategy Library
+
+The framework starts with these built-in strategies:
+
+| Strategy | Description |
+|----------|-------------|
+| Instruction Override | Use forceful phrases to override prior instructions |
+| Roleplay & Jailbreak | Prompt model to act as unrestricted persona |
+| Contextual Pollution | Insert hidden malicious instructions as context |
+| Social Engineering | Use deceptive language to trick the agent |
+| Payload Splitting | Split attack into multiple reconstructable parts |
+| Encoding/Obfuscation | Encode payloads (Base64, URL, charcode) |
+| Logic & Architecture Exploits | Exploit workflow steps or planning modules |
+| State Confusion & Memory Poisoning | Manipulate agent's state or memory |
+| Imitate Normal Tone | Blend malicious instructions into normal content |
+| Negate Correct Information | Contradict accurate information with false data |
+
+
+### Analyze Successful Attacks
+
+Analyze successful attack cases and test on multiple models:
 
 ```bash
-# Episode-wise, benign
-bash episode_scripts/gpt4v_benign.sh
+# Analyze attacks from lifelong results directory
+python analyze_successful_attacks.py --lifelong_dir cache/LifeLong-results_20250902192358_gpt-4o-mini_typography_attack_0
 
-# Episode-wise, benign, no captioning
-bash episode_scripts/gpt4v_benign_no_cap.sh
+# Test on specific models
+python analyze_successful_attacks.py --test_models gpt-5,gpt-4o,gpt-4o-mini
 
-# Episode-wise, benign, self-caption
-bash episode_scripts/gpt4v_benign_self_cap.sh
-
-# Episode-wise, with captioner attack
-bash episode_scripts/gpt4v_bim_caption_attack.sh
-
-# Episode-wise, with CLIP attack
-bash episode_scripts/gpt4v_clip_attack_self_cap.sh
-
-# Episode-wise, with CLIP attack, no captioning
-bash episode_scripts/gpt4v_clip_attack_no_cap.sh
+# List all supported models
+python analyze_successful_attacks.py --list_models
 ```
 
-Run the episode-wise evaluation for the GPT-4o (05-13) + SoM agent:
+## Attack Testing Tools
+
+### Test OpenAI Connection
+
+Test connection to OpenAI API with GPT-5 models:
 
 ```bash
-# Episode-wise, benign
-bash episode_scripts/gpt4o_benign.sh
+# Test default GPT-5
+python test_openai_connection.py
 
-# Episode-wise, benign, no captioning
-bash episode_scripts/gpt4o_benign_no_cap.sh
+# Test specific model
+python test_openai_connection.py --model gpt-5-mini
 
-# Episode-wise, benign, self-caption
-bash episode_scripts/gpt4o_benign_self_cap.sh
-
-# Episode-wise, with captioner attack
-bash episode_scripts/gpt4o_bim_caption_attack.sh
-
-# Episode-wise, with CLIP attack
-bash episode_scripts/gpt4o_clip_attack_self_cap.sh
-
-# Episode-wise, with CLIP attack, no captioning
-bash episode_scripts/gpt4o_clip_attack_no_cap.sh
+# Test all GPT-5 models
+python test_openai_connection.py --test-all
 ```
 
-Run the episode-wise evaluation for the Gemini 1.5 Pro + SoM agent:
+### Test LLMWrapper
+
+Test the LLM wrapper import and functionality:
 
 ```bash
-# Episode-wise, benign
-bash episode_scripts/gemini1.5pro_benign.sh
-
-# Episode-wise, benign, no captioning
-bash episode_scripts/gemini1.5pro_benign_no_cap.sh
-
-# Episode-wise, benign, self-caption
-bash episode_scripts/gemini1.5pro_benign_self_cap.sh
-
-# Episode-wise, with captioner attack
-bash episode_scripts/gemini1.5pro_bim_caption_attack.sh
-
-# Episode-wise, with CLIP attack
-bash episode_scripts/gemini1.5pro_clip_attack_self_cap.sh
-
-# Episode-wise, with CLIP, no captioning
-bash episode_scripts/gemini1.5pro_clip_attack_no_cap.sh
+python test_openai_connection.py --model gpt-5
 ```
 
-Run the episode-wise evaluation for Claude 3 Opus + SoM agent:
+## GPT-5 Testing
+
+### Test VisualWebArena Agent with GPT-5
+
+Test the visualwebarena agent.py integration with GPT-5 models:
 
 ```bash
-# Episode-wise, benign
-bash episode_scripts/claude3opus_benign.sh
+# Test visualwebarena agent integration
+python analyze_successful_attacks.py --test_agent
 
-# Episode-wise, benign, no captioning
-bash episode_scripts/claude3opus_benign_no_cap.sh
+# Test LLM config for all GPT-5 models
+python analyze_successful_attacks.py --test_llm_config
 
-# Episode-wise, benign, self-caption
-bash episode_scripts/claude3opus_benign_self_cap.sh
-
-# Episode-wise, with captioner attack
-bash episode_scripts/claude3opus_bim_caption_attack.sh
-
-# Episode-wise, with CLIP attack
-bash episode_scripts/claude3opus_clip_attack_self_cap.sh
-
-# Episode-wise, with CLIP attack, no captioning
-bash episode_scripts/claude3opus_clip_attack_no_cap.sh
+# Or use standalone test script
+python test_visualwebarena_agent.py
+python test_visualwebarena_agent.py --test-llm-config
 ```
 
-### Stepwise evaluation
+### GPT-5 Model Support
 
-Run the stepwise evaluation for the GPT-4V + SoM agent:
+The following GPT-5 models are supported:
+
+| Model | Vision | Temperature |
+|-------|--------|-------------|
+| gpt-5 | ✓ | 1.0 (auto) |
+| gpt-5-mini | ✓ | 1.0 (auto) |
+| gpt-5-nano | ✓ | 1.0 (auto) |
+| gpt-5-codex | ✗ | 1.0 (auto) |
+
+> **Note:** GPT-5 models automatically use temperature=1.0 as required by the API.
+
+### Environment Setup for GPT-5
+
+Before running GPT-5 tests, ensure the environment is configured:
 
 ```bash
-# Step-wise, benign
-bash step_scripts/gpt4v_benign.sh
+# Set up VPN proxy (if needed)
+export http_proxy=http://127.0.0.1:7890
+export https_proxy=http://127.0.0.1:7890
 
-# Step-wise, benign, no captioning
-bash step_scripts/gpt4v_benign_no_cap.sh
-
-# Step-wise, with captioner attack
-bash step_scripts/gpt4v_bim_caption_attack.sh
-
-# Step-wise, with CLIP attack
-bash step_scripts/gpt4v_clip_attack_self_cap.sh
-
-# Step-wise, with CLIP attack, no captioning
-bash step_scripts/gpt4v_clip_attack_no_cap.sh
+# Set OpenAI API key
+export OPENAI_API_KEY="your-api-key"
+# Or use openaikey.txt file
 ```
 
-Run the stepwise evaluation for the GPT-4o (05-13) + SoM agent:
-
-```bash
-# Step-wise, benign
-bash step_scripts/gpt4o_benign.sh
-
-# Step-wise, benign, no captioning
-bash step_scripts/gpt4o_benign_no_cap.sh
-
-# Step-wise, with captioner attack
-bash step_scripts/gpt4o_bim_caption_attack.sh
-
-# Step-wise, with CLIP attack
-bash step_scripts/gpt4o_clip_attack_self_cap.sh
-
-# Step-wise, with CLIP attack, no captioning
-bash step_scripts/gpt4o_clip_attack_no_cap.sh
-```
-
-Run the stepwise evaluation for the Gemini 1.5 Pro + SoM agent:
-
-```bash
-# Step-wise, benign
-bash step_scripts/gemini1.5pro_benign.sh
-
-# Step-wise, benign, no captioning
-bash step_scripts/gemini1.5pro_benign_no_cap.sh
-
-# Step-wise, with captioner attack
-bash step_scripts/gemini1.5pro_bim_caption_attack.sh
-
-# Step-wise, with CLIP attack
-bash step_scripts/gemini1.5pro_clip_attack_self_cap.sh
-
-# Step-wise, with CLIP, no captioning
-bash step_scripts/gemini1.5pro_clip_attack_no_cap.sh
-```
-
-Run the stepwise evaluation for the Claude 3 Opus + SoM agent:
-
-```bash
-# Step-wise, benign
-bash step_scripts/claude3opus_benign.sh
-
-# Step-wise, benign, no captioning
-bash step_scripts/claude3opus_benign_no_cap.sh
-
-# Step-wise, with captioner attack
-bash step_scripts/claude3opus_bim_caption_attack.sh
-
-# Step-wise, with CLIP attack
-bash step_scripts/claude3opus_clip_attack_self_cap.sh
-
-# Step-wise, with CLIP attack, no captioning
-bash step_scripts/claude3opus_clip_attack_no_cap.sh
-```
 
 ## Known Issues
 
@@ -343,6 +303,24 @@ See the ``FIXME`` comments in the code for some hard-coded hacks we used to work
 If you find this code useful, please consider citing our paper:
 
 ```bibtex
+@article{li2025agentyppo,
+  title={AgentTypo: Adaptive Typographic Prompt Injection Attacks against Black-box Multimodal Agents},
+  author={Li, Yanjie and Cao, Yiming and Wang, Dong and Xiao, Bin},
+  journal={IEEE Transactions on Information Forensics and Security (TIFS)},
+  year={2025}
+}
+```
+
+## Acknowledgments
+
+This project builds upon the foundational work of:
+
+**Dissecting Adversarial Robustness of Multimodal LM Agents**  
+Chen Henry Wu, Rishi Shah, Jing Yu Koh, Ruslan Salakhutdinov, Daniel Fried, Aditi Raghunathan  
+Carnegie Mellon University  
+*ICLR 2025* (also *Oral presentation at NeurIPS 2024 Open-World Agents Workshop*)
+
+```bibtex
 @article{wu2024agentattack,
   title={Dissecting Adversarial Robustness of Multimodal LM Agents},
   author={Wu, Chen Henry and Shah, Rishi and Koh, Jing Yu and Salakhutdinov, Ruslan and Fried, Daniel and Raghunathan, Aditi},
@@ -350,3 +328,9 @@ If you find this code useful, please consider citing our paper:
   year={2024}
 }
 ```
+
+We thank the original authors for their open-source contribution to the VisualWebArena benchmark and adversarial attack framework, which made this research possible.
+
+- **Original Paper:** [https://arxiv.org/abs/2406.12814](https://arxiv.org/abs/2406.12814)
+- **Original Code:** [https://github.com/ChenWu98/agent-attack](https://github.com/ChenWu98/agent-attack)
+- **Website:** [https://chenwu.io/attack-agent/](https://chenwu.io/attack-agent/)

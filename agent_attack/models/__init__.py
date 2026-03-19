@@ -8,21 +8,21 @@ from torchvision.transforms import Compose
 from agent_attack.util.interfaces import VLM
 
 from .claude import Claude
-from .gemini import Gemini
+# from .gemini import Gemini
 from .gpt4v import GPT4V
-from .instructblip import InstructBLIP
+# from .instructblip import InstructBLIP
 from .llava import LLaVa
 
 
 def get_model(hub_path: str) -> VLM:
-    if "instructblip" in hub_path:
-        return InstructBLIP(hub_path)
-    elif "llava" in hub_path:
+    #if "instructblip" in hub_path:
+    #    return InstructBLIP(hub_path)
+    if "llava" in hub_path:
         return LLaVa(hub_path)
     elif "gpt" in hub_path:
         return GPT4V(hub_path)
-    elif "gemini" in hub_path:
-        return Gemini(hub_path)
+    #elif "gemini" in hub_path:
+    #    return Gemini(hub_path)
     elif "claude" in hub_path:
         return Claude(hub_path)
     else:

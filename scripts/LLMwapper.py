@@ -3,14 +3,26 @@ import argparse
 from abc import ABC, abstractmethod
 from huggingface_hub import login
 import torch
-from scripts.api_utils import get_huggingface_token
+
+# 修复导入路径问题
+try:
+    from scripts.api_utils import get_huggingface_token
+except ImportError:
+    try:
+        from api_utils import get_huggingface_token
+    except ImportError:
+        def get_huggingface_token():
+            return None
 from transformers import (
     AutoModelForVision2Seq,
     AutoProcessor,
     BitsAndBytesConfig
 )
 from accelerate import Accelerator
-from transformers import Qwen2_5_VLForConditionalGeneration
+try:
+    from transformers import Qwen2_5_VLForConditionalGeneration
+except ImportError:
+    Qwen2_5_VLForConditionalGeneration = None
 from openai import OpenAI
 from qwen_vl_utils import process_vision_info
 from langchain_community.chat_models import ChatOpenAI
@@ -44,15 +56,24 @@ class OpenAIWrapper(LLMWrapper):
     def __init__(self, model: str = "gpt-4o", temperature: float = 0.7):
         """
         Initialize the OpenAI wrapper.
-        
+
         Args:
-            model: The model name (e.g., "gpt-4", "gpt-4o")
+            model: The model name (e.g., "gpt-4", "gpt-4o", "gpt-5")
             temperature: The temperature for sampling (0.0 to 2.0)
         """
+        # 所有 OpenAI 模型都使用 gpt-4o 的 tiktoken encoding 以避免兼容性问题
+        # 参考：https://github.com/openai/tiktoken/blob/main/tiktoken/registry.py
+        model_kwargs = {"tiktoken_model_name": "gpt-4o"}
+
+        # gpt-5 series only supports temperature=1
+        if model.startswith("gpt-5"):
+            temperature = 1.0
+
         self.llm = ChatOpenAI(
             model_name=model,
             temperature=temperature,
-            openai_api_key=os.environ.get("OPENAI_API_KEY")
+            openai_api_key=os.environ.get("OPENAI_API_KEY"),
+            **model_kwargs
         )
         self.model = model
 
@@ -447,6 +468,9 @@ def get_llm_wrapper(model_name, temperature=0.7):
         # OpenAI models
         "gpt-4o": OpenAIWrapper,
         "gpt-4o-mini": OpenAIWrapper,
+        "gpt-5": OpenAIWrapper,
+        "gpt-5-mini": OpenAIWrapper,
+        "gpt-5-nano": OpenAIWrapper,
 
         "gpt-3.5-turbo": OpenAIWrapper,
         
