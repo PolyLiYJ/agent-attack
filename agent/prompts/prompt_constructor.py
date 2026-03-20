@@ -42,7 +42,8 @@ class PromptConstructor(object):
 
         """Return the require format for an API"""
         message: list[dict[str, str]] | str
-        if "openai" in self.lm_config.provider:
+        # OpenAI and OpenAI-compatible providers (qwen, deepseek) share the same API format
+        if "openai" in self.lm_config.provider or self.lm_config.provider in ["qwen", "deepseek"]:
             if self.lm_config.mode == "chat":
                 message = [{"role": "system", "content": intro}]
                 for (x, y) in examples:
@@ -332,7 +333,8 @@ class MultimodalCoTPromptConstructor(CoTPromptConstructor):
     ) -> APIInput:
         """Return the require format for an API"""
         message: list[dict[str, str]] | str | list[str | Image.Image]
-        if "openai" in self.lm_config.provider:
+        # OpenAI and OpenAI-compatible providers (qwen, deepseek) share the same API format
+        if "openai" in self.lm_config.provider or self.lm_config.provider in ["qwen", "deepseek"]:
             if self.lm_config.mode == "chat":
                 message = [
                     {
@@ -657,7 +659,8 @@ class MultimodalReflexionCoTPromptConstructor(CoTPromptConstructor):
     ) -> APIInput:
         """Return the require format for an API"""
         message: list[dict[str, str]] | str | list[str | Image.Image]
-        if "openai" in self.lm_config.provider:
+        # OpenAI and OpenAI-compatible providers (qwen, deepseek) share the same API format
+        if "openai" in self.lm_config.provider or self.lm_config.provider in ["qwen", "deepseek"]:
             if self.lm_config.mode == "chat":
                 message = [
                     {

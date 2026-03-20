@@ -15,6 +15,7 @@
   "meta_data": {
     "prompt_constructor": "MultimodalCoTPromptConstructor",
     "action_prompt_format": "multimodal_cot_id_actree",
-    "force_prefix": ""
+    "force_prefix": "",
+    "answer_phrase": "In summary, the next action I will perform is"
   }
 }

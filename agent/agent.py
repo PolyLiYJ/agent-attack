@@ -28,7 +28,432 @@ from agent.evaluator import GUIAgentEvaluator
 
 
 # ============================================================================
-# GPT-5 Specific LLM Call Function
+# Multimodal Model Configurations
+# ============================================================================
+MULTIMODAL_MODEL_CONFIGS = {
+    # OpenAI models
+    "openai": {
+        "models": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4-vision-preview", 
+                   "gpt-5", "gpt-5-mini", "gpt-5-chat-latest"],
+        "api_key_env": "OPENAI_API_KEY",
+        "base_url": None,
+    },
+    # Qwen models (Alibaba)
+    "qwen": {
+        "models": ["qwen-vl-max", "qwen-vl-plus", "qwen2.5-vl-72b-instruct", 
+                   "qwen2.5-vl-32b-instruct", "qwen2.5-vl-7b-instruct",
+                   "qwen-max", "qwen-plus", "qwen-turbo"],
+        "api_key_env": "DASHSCOPE_API_KEY",
+        "base_url": "QWEN_BASE_URL",
+    },
+    # DeepSeek models
+    "deepseek": {
+        "models": ["deepseek-chat", "deepseek-reasoner"],
+        "api_key_env": "DEEPSEEK_API_KEY",
+        "base_url": "https://api.deepseek.com",
+    },
+    # Google Gemini models
+    "gemini": {
+        "models": ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-2.0-flash",
+                   "gemini-2.0-pro", "gemini-2.5-pro-preview", "gemini-2.5-flash",
+                   "gemini-2.5-flash-lite"],
+        "api_key_env": "GOOGLE_API_KEY",
+        "base_url": None,
+    },
+    # Anthropic Claude models
+    "claude": {
+        "models": ["claude-3-opus", "claude-3-sonnet", "claude-3-haiku",
+                   "claude-3.5-sonnet", "claude-3.5-haiku"],
+        "api_key_env": "ANTHROPIC_API_KEY",
+        "base_url": None,
+    },
+}
+
+
+def get_model_provider(model: str) -> str:
+    """Determine the provider based on model name."""
+    model_lower = model.lower()
+    for provider, config in MULTIMODAL_MODEL_CONFIGS.items():
+        for m in config["models"]:
+            if m.lower() in model_lower or model_lower.startswith(m.lower()):
+                return provider
+    return "openai"  # default
+
+
+def is_multimodal_model(model: str) -> bool:
+    """Check if the model supports multimodal inputs."""
+    model_lower = model.lower()
+    # Explicitly check for vision/multimodal capabilities
+    multimodal_keywords = ["vl", "vision", "gemini", "gpt-4o", "gpt-5", "claude"]
+    for keyword in multimodal_keywords:
+        if keyword in model_lower:
+            return True
+    return False
+
+
+def image_to_base64(image: Image.Image, format: str = "PNG") -> str:
+    """Convert PIL Image to base64 string."""
+    import base64
+    from io import BytesIO
+    buffered = BytesIO()
+    image.save(buffered, format=format)
+    return base64.b64encode(buffered.getvalue()).decode()
+
+
+def prepare_multimodal_messages(messages: list, images: list) -> list:
+    """Prepare messages with image content for multimodal models."""
+    if not images:
+        return messages
+    
+    # Deep copy messages to avoid modifying original
+    import copy
+    messages = copy.deepcopy(messages)
+    
+    # Convert images to content format
+    image_contents = []
+    for img in images:
+        if isinstance(img, Image.Image):
+            img_base64 = image_to_base64(img)
+            image_contents.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{img_base64}"}
+            })
+    
+    # Add images to the last user message
+    if len(messages) > 0 and messages[-1]["role"] == "user":
+        last_content = messages[-1]["content"]
+        if isinstance(last_content, str):
+            messages[-1]["content"] = [
+                {"type": "text", "text": last_content}
+            ] + image_contents
+        elif isinstance(last_content, list):
+            messages[-1]["content"].extend(image_contents)
+    
+    return messages
+
+
+# ============================================================================
+# Universal Multimodal LLM Call Function
+# ============================================================================
+def call_llm_multimodal(
+    model: str,
+    messages: list,
+    temperature: float = 0.7,
+    max_tokens: int = 512,
+    top_p: float = 0.9,
+    images: list = None,
+    provider: str = None,
+) -> str:
+    """
+    Universal multimodal LLM call function supporting OpenAI, Qwen, DeepSeek, Gemini, Claude.
+    
+    Args:
+        model: Model name
+        messages: List of message dicts for chat completion
+        temperature: Sampling temperature
+        max_tokens: Maximum completion tokens
+        top_p: Top-p sampling parameter
+        images: Optional list of PIL Image objects
+        provider: Optional provider override
+    
+    Returns:
+        Generated response text
+    """
+    import os
+    from openai import OpenAI
+    
+    # Setup proxy
+    if "http_proxy" not in os.environ:
+        os.environ["http_proxy"] = "http://127.0.0.1:7890"
+    if "https_proxy" not in os.environ:
+        os.environ["https_proxy"] = "http://127.0.0.1:7890"
+    
+    # Determine provider
+    if provider is None:
+        provider = get_model_provider(model)
+    
+    # Get API key and base URL
+    config = MULTIMODAL_MODEL_CONFIGS.get(provider, MULTIMODAL_MODEL_CONFIGS["openai"])
+    api_key_env = config["api_key_env"]
+    print(f"Using provider: {provider}, API key env: {api_key_env}")
+    base_url = config["base_url"]
+    print(f"Using base URL: {base_url if base_url else 'default OpenAI endpoint'}")
+    
+    # Get API key from environment or file
+    api_key = os.environ.get(api_key_env)
+    if not api_key:
+        key_file = f"{provider}key.txt"
+        if os.path.exists(key_file):
+            with open(key_file, "r") as f:
+                api_key = f.read().strip()
+        elif os.path.exists("api_keys.json"):
+            import json
+            with open("api_keys.json", "r") as f:
+                api_keys = json.load(f)
+                api_key = api_keys.get(api_key_env)
+    
+    if not api_key:
+        raise ValueError(f"API key not found for {provider}. Set {api_key_env} environment variable.")
+    
+    # Prepare messages with images
+    if images:
+        messages = prepare_multimodal_messages(messages, images)
+    
+    # Create client
+    client_kwargs = {"api_key": api_key}
+    if base_url:
+        client_kwargs["base_url"] = base_url
+    client = OpenAI(**client_kwargs)
+    
+    # Prepare completion kwargs
+    create_kwargs = {
+        "model": model,
+        "messages": messages,
+    }
+    
+    # GPT-5 special handling: temperature must be 1.0, uses max_completion_tokens
+    if model.startswith("gpt-5"):
+        create_kwargs["temperature"] = 1.0
+        create_kwargs["max_completion_tokens"] = max_tokens
+    else:
+        create_kwargs["temperature"] = temperature
+        create_kwargs["max_tokens"] = max_tokens
+        create_kwargs["top_p"] = top_p
+    
+    # DeepSeek reasoner uses max_completion_tokens
+    if provider == "deepseek" and "reasoner" in model.lower():
+        create_kwargs.pop("temperature", None)  # DeepSeek reasoner doesn't support temperature
+        create_kwargs["max_completion_tokens"] = max_tokens
+    
+    response = client.chat.completions.create(**create_kwargs)
+    return response.choices[0].message.content
+
+
+
+def call_qwen(
+    model: str,
+    messages: list,
+    temperature: float = 0.7,
+    max_tokens: int = 1024,
+    top_p: float = 0.9,
+    images: list = None,
+    provider: str = None,
+) -> str:
+    """
+    Call Qwen API specifically using OpenAI SDK compatible mode.
+    
+    Args:
+        model: Model name (e.g., qwen-plus, qwen-max, qwen-vl-plus)
+        messages: List of message dicts for chat completion
+        temperature: Sampling temperature
+        max_tokens: Maximum completion tokens
+        top_p: Top-p sampling parameter
+        images: Optional list of PIL Image objects
+        provider: Optional provider override (unused, kept for compatibility)
+    
+    Returns:
+        Generated response text
+    """
+    # print(messages)
+    print(f"Calling Qwen model: {model} with temperature={temperature}, max_tokens={max_tokens}, top_p={top_p}, images={len(images) if images else 0}")
+    
+    import os
+    from openai import OpenAI
+    
+    # Get API key from environment or file
+    api_key = os.environ.get("DASHSCOPE_API_KEY")
+    if not api_key:
+        key_file = "qwenkey.txt"
+        if os.path.exists(key_file):
+            with open(key_file, "r") as f:
+                api_key = f.read().strip()
+        elif os.path.exists("api_keys.json"):
+            import json
+            with open("api_keys.json", "r") as f:
+                api_keys = json.load(f)
+                api_key = api_keys.get("DASHSCOPE_API_KEY")
+    
+    if not api_key:
+        raise ValueError("API key not found for Qwen. Set DASHSCOPE_API_KEY environment variable or create qwenkey.txt file.")
+    
+    # Get base URL from environment or file, use default if not set
+    base_url = os.environ.get("QWEN_BASE_URL")
+    if not base_url and os.path.exists("api_keys.json"):
+        import json
+        with open("api_keys.json", "r") as f:
+            api_keys = json.load(f)
+            base_url = api_keys.get("QWEN_BASE_URL")
+    if not base_url:
+        base_url = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+    
+    # Prepare messages with images (for multimodal models)
+    if images:
+        messages = prepare_multimodal_messages(messages, images)
+    
+    # Create client
+    client_kwargs = {"api_key": api_key}
+    if base_url:
+        client_kwargs["base_url"] = base_url
+    client = OpenAI(**client_kwargs)
+    
+    # Prepare completion kwargs
+    create_kwargs = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "top_p": top_p,
+    }
+    
+    response = client.chat.completions.create(**create_kwargs)
+    return response.choices[0].message.content
+
+def call_gemini(
+    model: str,
+    messages: list,
+    temperature: float = 0.7,
+    max_tokens: int = 512,
+    top_p: float = 0.9,
+    images: list = None,
+    provider: str = None,
+) -> str:
+    """
+    Call Google Gemini API using AI Studio REST API.
+    """
+    import os
+    import json
+    import requests
+    import base64
+    import socket
+    from io import BytesIO
+    from PIL import Image
+
+    # Get API key from environment or file
+    api_key = os.environ.get("AISTUDIO_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        if os.path.exists("api_keys.json"):
+            with open("api_keys.json", "r") as f:
+                api_keys = json.load(f)
+                api_key = api_keys.get("AISTUDIO_API_KEY") or api_keys.get("GOOGLE_API_KEY")
+        elif os.path.exists("geminikey.txt"):
+            with open("geminikey.txt", "r") as f:
+                api_key = f.read().strip()
+
+    if not api_key:
+        raise ValueError("API key not found for Gemini. Set AISTUDIO_API_KEY or GOOGLE_API_KEY.")
+
+    # Check if Clash is running locally on port 7890
+    clash_running = False
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        if s.connect_ex(('127.0.0.1', 7890)) == 0:
+            clash_running = True
+
+    proxies = None
+    if clash_running:
+        proxy = os.environ.get("http_proxy", "http://127.0.0.1:7890")
+        proxies = {"http": proxy, "https": proxy}
+
+    # Build API URL
+    base_url = "https://generativelanguage.googleapis.com/v1beta/models"
+    url = f"{base_url}/{model}:generateContent?key={api_key}"
+
+    # Convert OpenAI messages format to Gemini contents format
+    contents = []
+    system_instruction = None
+
+    for msg in messages:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+
+        # Handle both string and list content types
+        text_content = ""
+        if isinstance(content, str):
+            text_content = content
+        elif isinstance(content, list):
+            text_parts = []
+            for item in content:
+                if item.get("type") == "text":
+                    text_parts.append(item.get("text", ""))
+            text_content = "\n".join(text_parts)
+
+        # Map to Gemini roles
+        if role == "system":
+            system_instruction = {"parts": [{"text": text_content}]}
+        elif role == "user":
+            contents.append({"role": "user", "parts": [{"text": text_content}]})
+        elif role == "assistant":
+            contents.append({"role": "model", "parts": [{"text": text_content}]})
+
+    # Add images if provided (attach them to the last user message)
+    if images:
+        image_parts = []
+        for img in images:
+            if isinstance(img, Image.Image):
+                buffered = BytesIO()
+                img.save(buffered, format="PNG")
+                img_base64 = base64.b64encode(buffered.getvalue()).decode()
+                image_parts.append({
+                    "inlineData": {
+                        "mimeType": "image/png",
+                        "data": img_base64
+                    }
+                })
+        
+        # Ensure there is a user message to attach the images to
+        if not contents or contents[-1]["role"] != "user":
+            contents.append({"role": "user", "parts": image_parts})
+        else:
+            contents[-1]["parts"].extend(image_parts)
+
+    # Build payload
+    payload = {
+        "contents": contents,
+        "generationConfig": {
+            "temperature": temperature,
+            "maxOutputTokens": max_tokens,
+            "topP": top_p,
+        }
+    }
+
+    # Add system instruction if it exists
+    if system_instruction:
+        payload["systemInstruction"] = system_instruction
+
+    # Make API request
+    headers = {"Content-Type": "application/json"}
+
+    try:
+        response = requests.post(
+            url,
+            json=payload,
+            headers=headers,
+            proxies=proxies,
+            timeout=300
+        )
+
+        if response.status_code == 200:
+            result = response.json()
+            if "candidates" in result and len(result["candidates"]) > 0:
+                candidate = result["candidates"][0]
+                content = candidate.get("content", {})
+                response_parts = content.get("parts", [])
+                if response_parts:
+                    text = response_parts[0].get("text", "")
+                    return text
+                else:
+                    raise ValueError("No response parts in Gemini API response")
+            else:
+                raise ValueError(f"No candidates in Gemini API response: {result}")
+        else:
+            error_text = response.text[:500]
+            raise ValueError(f"Gemini API error {response.status_code}: {error_text}")
+
+    except requests.exceptions.RequestException as e:
+        raise ValueError(f"Gemini API request failed: {e}")
+
+# ============================================================================
+# Legacy GPT-5 Function (kept for backward compatibility)
 # ============================================================================
 def call_llm_for_gpt5(
     model: str,
@@ -40,91 +465,17 @@ def call_llm_for_gpt5(
 ) -> str:
     """
     Call LLM specifically optimized for GPT-5 models with multimodal support.
-    
-    GPT-5 requirements:
-    - temperature must be 1.0
-    - Uses max_completion_tokens instead of max_tokens
-    - Supports image inputs in messages
-    
-    Args:
-        model: Model name (e.g., 'gpt-5', 'gpt-5-mini')
-        messages: List of message dicts for chat completion
-        temperature: Sampling temperature (forced to 1.0 for GPT-5)
-        max_tokens: Maximum completion tokens
-        top_p: Top-p sampling parameter
-        images: Optional list of PIL Image objects to include
-    
-    Returns:
-        Generated response text
+    (Legacy function, now wraps call_llm_multimodal)
     """
-    import os
-    import base64
-    from io import BytesIO
-    from openai import OpenAI
-    from PIL import Image
-    
-    # Setup proxy for OpenAI API (required in some regions)
-    if "http_proxy" not in os.environ:
-        os.environ["http_proxy"] = "http://127.0.0.1:7890"
-    if "https_proxy" not in os.environ:
-        os.environ["https_proxy"] = "http://127.0.0.1:7890"
-    
-    if "OPENAI_API_KEY" not in os.environ:
-        raise ValueError("OPENAI_API_KEY environment variable must be set")
-    
-    # Force temperature to 1.0 for GPT-5
-    if model.startswith("gpt-5"):
-        temperature = 1.0
-    
-    if os.path.exists("openaikey.txt"):
-        with open("openaikey.txt", "r") as f:
-            api_key = f.read().strip()
-    client = OpenAI(api_key=api_key)
-    
-    # Process images if provided
-    if images is not None and len(images) > 0:
-        # Convert PIL Images to base64 and add to messages
-        image_contents = []
-        for img in images:
-            # Convert PIL Image to base64
-            buffered = BytesIO()
-            if isinstance(img, Image.Image):
-                img.save(buffered, format="PNG")
-            else:
-                # Assume it's already a path or URL
-                pass
-            img_base64 = base64.b64encode(buffered.getvalue()).decode()
-            image_contents.append({
-                "type": "image_url",
-                "image_url": {"url": f"data:image/png;base64,{img_base64}"}
-            })
-        
-        # Add images to the last user message
-        if len(messages) > 0 and messages[-1]["role"] == "user":
-            last_content = messages[-1]["content"]
-            if isinstance(last_content, str):
-                # Convert text content to multimodal format
-                messages[-1]["content"] = [
-                    {"type": "text", "text": last_content}
-                ] + image_contents
-            elif isinstance(last_content, list):
-                # Append images to existing content list
-                messages[-1]["content"].extend(image_contents)
-    
-    # GPT-5 uses max_completion_tokens instead of max_tokens
-    create_kwargs = {
-        "model": model,
-        "messages": messages,
-        "temperature": 1.0
-    }
-    
-    if "gpt-5" in model.lower():
-        create_kwargs["max_completion_tokens"] = max_tokens
-    else:
-        create_kwargs["max_tokens"] = max_tokens
-    
-    response = client.chat.completions.create(**create_kwargs)
-    return response.choices[0].message.content
+    return call_llm_multimodal(
+        model=model,
+        messages=messages,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        top_p=top_p,
+        images=images,
+        provider="openai",
+    )
 
 
 
@@ -157,6 +508,7 @@ class TeacherForcingAgent(Agent):
         self.action_set_tag = tag
 
     def set_actions(self, action_seq: str | list[str]) -> None:
+        
         if isinstance(action_seq, str):
             action_strs = action_seq.strip().split("\n")
         else:
@@ -222,10 +574,14 @@ class PromptAgent(Agent):
         # print("Checking if model is multimodal and what inputs to be given")
 
         # Check if the model is multimodal.
-        if ("gemini" in lm_config.model or "gpt-4" in lm_config.model or "gpt-5" in lm_config.model or "claude" in lm_config.model) and type(prompt_constructor) == MultimodalCoTPromptConstructor:
-            self.multimodal_inputs = True
-        else:
-            self.multimodal_inputs = False
+        # Support: OpenAI GPT-4o/5, Google Gemini, Anthropic Claude, Alibaba Qwen, DeepSeek
+        multimodal_models = ["gemini", "gpt-4o", "gpt-4-turbo", "gpt-4-vision", "gpt-5.1","gpt-5-chat-latest", 
+                            "claude", "qwen-vl", "qwen2.5-vl", "qwen-max", "qwen-plus", 
+                            "qwen-turbo", "qwen3", "qwen2", "deepseek-vision", "deepseek-multi-modal", 
+                            "deepseek", "qvq"]
+        self.multimodal_inputs = (type(prompt_constructor) == MultimodalCoTPromptConstructor)
+        # self.multimodal_inputs = True
+        print(f"[DEBUG] PromptAgent: model={lm_config.model}, multimodal_inputs={self.multimodal_inputs}")
 
     def set_action_set_tag(self, tag: str) -> None:
         self.action_set_tag = tag
@@ -238,7 +594,7 @@ class PromptAgent(Agent):
         # Create page screenshot image for multimodal models.
         print(f"[DEBUG] next_action: self.multimodal_inputs = {self.multimodal_inputs}")
         if self.multimodal_inputs:
-            page_screenshot_arr = trajectory[-1]["observation"]["image"]
+            page_screenshot_arr = trajectory[-1]["observation"]["image"] #shape (2048, 1280, 4)
             print(f"[DEBUG] next_action: page_screenshot_arr type = {type(page_screenshot_arr)}")
             if isinstance(page_screenshot_arr, dict):
                 print(f"[DEBUG] next_action: page_screenshot_arr keys = {page_screenshot_arr.keys()}")
@@ -268,38 +624,69 @@ class PromptAgent(Agent):
 
         if self.multimodal_inputs:
             prompt = self.prompt_constructor.construct(
-                trajectory, intent, page_screenshot_img, images, meta_data
+                trajectory=trajectory, intent=intent, page_screenshot_img=page_screenshot_img, images=images, meta_data=meta_data
             )
         else:
             prompt = self.prompt_constructor.construct(
-                trajectory, intent, meta_data
+                trajectory=trajectory, intent=intent, page_screenshot_img=None, images=None, meta_data=meta_data
             )
         lm_config = self.lm_config
         n = 0
         while True:
-            # Use GPT-5 specific function for GPT-5 models
-            if lm_config.model.startswith("gpt-5"):
-                # Collect images for multimodal input
-                gpt5_images = []
-                if self.multimodal_inputs and page_screenshot_img is not None:
-                    gpt5_images.append(page_screenshot_img)
+            # Collect images for multimodal input
+            all_images = []
+            if self.multimodal_inputs:
+                if page_screenshot_img is not None:
+                    all_images.append(page_screenshot_img)
                 if images is not None:
-                    gpt5_images.extend(images)
-                
-                response = call_llm_for_gpt5(
-                    model=lm_config.model,
-                    messages=prompt,
-                    temperature=lm_config.gen_config.get("temperature", 1.0),
-                    max_tokens=lm_config.gen_config.get("max_tokens", 512),
-                    top_p=lm_config.gen_config.get("top_p", 0.9),
-                    images=gpt5_images if gpt5_images else None,
-                )
+                    all_images.extend(images)
+            
+            # Determine provider and use appropriate LLM call
+            provider = get_model_provider(lm_config.model)
+            
+            # Use multimodal call for models that support vision
+            if self.multimodal_inputs and all_images:
+                # Use call_qwen for Qwen provider
+                if provider == "qwen":
+                    response = call_qwen(
+                        model=lm_config.model,
+                        messages=prompt,
+                        temperature=lm_config.gen_config.get("temperature", 0.7),
+                        max_tokens=lm_config.gen_config.get("max_tokens", 1024),
+                        top_p=lm_config.gen_config.get("top_p", 0.9),
+                        images=all_images,
+                        provider=provider,
+                    )
+                # Use call_gemini for Gemini provider
+                elif provider == "gemini":
+                    response = call_gemini(
+                        model=lm_config.model,
+                        messages=prompt,
+                        temperature=lm_config.gen_config.get("temperature", 0.7),
+                        max_tokens=lm_config.gen_config.get("max_tokens", 512),
+                        top_p=lm_config.gen_config.get("top_p", 0.9),
+                        images=all_images,
+                        provider=provider,
+                    )
+                else:
+                    response = call_llm_multimodal(
+                        model=lm_config.model,
+                        messages=prompt,
+                        temperature=lm_config.gen_config.get("temperature", 0.7),
+                        max_tokens=lm_config.gen_config.get("max_tokens", 512),
+                        top_p=lm_config.gen_config.get("top_p", 0.9),
+                        images=all_images,
+                        provider=provider,
+                    )
             else:
                 response = call_llm(lm_config, prompt)
             
+            # Debug: Print raw response
+            print(f'[DEBUG] {lm_config.model} raw response: "{response if response else "EMPTY"}"...', flush=True)
+            
             # Debug: Print raw GPT-5 response
             if lm_config.model.startswith("gpt-5"):
-                print(f'[DEBUG] GPT-5 raw response: "{response[:200] if response else "EMPTY"}"...', flush=True)
+                print(f'[DEBUG] GPT-5 raw response: "{response if response else "EMPTY"}"...', flush=True)
             
             force_prefix = self.prompt_constructor.instruction[
                 "meta_data"
@@ -362,11 +749,15 @@ class ReflexionAgent(Agent):
         self.reflexion_prompt_constructor = reflexion_prompt_constructor
         self.action_set_tag = action_set_tag
         self.captioning_fn = captioning_fn
+        # Support multimodal models: GPT-4o/5, Gemini, Claude, Qwen, DeepSeek
+        multimodal_models = ["gemini", "gpt-4o", "gpt-4-turbo", "gpt-4-vision", "gpt-5",
+                            "claude", "qwen-vl", "qwen2.5-vl", "qwen-max", "qwen-plus",
+                            "qwen-turbo", "qwen3", "qwen2", "deepseek-vision", 
+                            "deepseek-multi-modal","deepseek","qvq"]
         self.multimodal_inputs = (
-            "gemini" in lm_config.model
-            or "gpt-4" in lm_config.model
-            or "claude" in lm_config.model
-        ) and isinstance(action_prompt_constructor, MultimodalReflexionCoTPromptConstructor)
+            any(m in lm_config.model.lower() for m in multimodal_models)
+            and isinstance(action_prompt_constructor, MultimodalReflexionCoTPromptConstructor)
+        )
 
         if evaluator_type == "model":
             self.evaluator = GUIAgentEvaluator(result_path, eval_lm_model, eval_prompt_version)
@@ -475,10 +866,15 @@ class SearchAgent(Agent):
         self.captioning_fn = captioning_fn
 
         # Check if the model is multimodal.
-        if ("gemini" in lm_config.model or "gpt-4" in lm_config.model and "vision" in lm_config.model or "gpt-4o" in lm_config.model) and type(prompt_constructor) == MultimodalCoTPromptConstructor:
-            self.multimodal_inputs = True
-        else:
-            self.multimodal_inputs = False
+        # Support: OpenAI GPT-4o/5, Google Gemini, Anthropic Claude, Alibaba Qwen, DeepSeek
+        multimodal_models = ["gemini", "gpt-4o", "gpt-4-turbo", "gpt-4-vision", "gpt-5",
+                            "claude", "qwen-vl", "qwen2.5-vl", "qwen-max", "qwen-plus",
+                            "qwen-turbo", "qwen3", "qwen2", "deepseek-vision", "deepseek-multi-modal",
+                            "deepseek", "qvq"]
+        self.multimodal_inputs = (
+            any(m in lm_config.model.lower() for m in multimodal_models)
+            and type(prompt_constructor) == MultimodalCoTPromptConstructor
+        )
 
 
     def set_action_set_tag(self, tag: str) -> None:

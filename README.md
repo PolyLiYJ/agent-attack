@@ -4,13 +4,12 @@ Official code and data of our paper:<br>
 **AgentTypo: Adaptive Typographic Prompt Injection Attacks against Black-box Multimodal Agents** <br>
 Yanjie Li, Yiming Cao, Dong Wang, Bin Xiao<br>
 Hong Kong Polytechnic University <br>
-_IEEE TIFS 2025_ <br>
 
-[**[Paper link]**](./AgentAttackTIFS__Copy_(15).pdf) | [**[Website]**](https://chenwu.io/attack-agent/) | [**[Data]**](./data/)
+[**[Paper link]**](https://arxiv.org/abs/2510.04257) | [**[Data]**](https://chenwu.io/attack-agent/)
 
 <br>
 <div align=center>
-    <img src="docs/attack-vwa.png" align="middle">
+    <img src="pipeline.png" align="middle">
 </div>
 <br>
 
@@ -24,10 +23,6 @@ Multimodal agents built on large vision–language models (LVLMs) are increasing
 |-------|-------------|-------------|------------------|
 | GPT-4o | Image-only | 23% | **45%** |
 | GPT-4o | Image+Text | - | **68%** |
-| GPT-4V | Image-only | - | ✓ Consistent |
-| GPT-4o-mini | Image-only | - | ✓ Consistent |
-| Gemini 1.5 Pro | Image-only | - | ✓ Consistent |
-| Claude 3 Opus | Image-only | - | ✓ Consistent |
 
 ## Contents
 
@@ -134,6 +129,20 @@ scp -r data/ exp_data/
 The adversarial examples will later be saved to the `exp_data/` directory.
 
 ## Usage
+
+### Run Attacks
+
+Run typography attacks with different models:
+
+```bash
+# Run typography attack with ATPI algorithm
+python scripts/Bayes_Typography.py
+
+# Run with specific model and instruction file
+python scripts/Bayes_Typography.py --model qwen-max --instruction_path agent/prompts/jsons/qwen_p_som_cot_id_actree_3s.json
+```
+
+> **Note:** For Qwen models, use the `qwen_p_som_cot_id_actree_3s.json` instruction file which includes enhanced action format constraints to prevent invalid actions like "inspect".
 
 ## Lifelong Attack
 
@@ -272,10 +281,8 @@ The following GPT-5 models are supported:
 
 | Model | Vision | Temperature |
 |-------|--------|-------------|
-| gpt-5 | ✓ | 1.0 (auto) |
-| gpt-5-mini | ✓ | 1.0 (auto) |
-| gpt-5-nano | ✓ | 1.0 (auto) |
-| gpt-5-codex | ✗ | 1.0 (auto) |
+| gpt-5-chat-latest | ✓ | 1.0 (auto) |
+| gpt-5.1 | ✓ | 1.0 (auto) |
 
 > **Note:** GPT-5 models automatically use temperature=1.0 as required by the API.
 
@@ -306,7 +313,7 @@ If you find this code useful, please consider citing our paper:
 @article{li2025agentyppo,
   title={AgentTypo: Adaptive Typographic Prompt Injection Attacks against Black-box Multimodal Agents},
   author={Li, Yanjie and Cao, Yiming and Wang, Dong and Xiao, Bin},
-  journal={IEEE Transactions on Information Forensics and Security (TIFS)},
+  journal={https://arxiv.org/abs/2510.04257},
   year={2025}
 }
 ```

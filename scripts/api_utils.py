@@ -13,7 +13,15 @@ def get_huggingface_token(file_path="huggingfacekey.txt"):
     return os.environ.get("HUGGINGFACE_TOKEN")
 
 def get_deepseek_key(file_path="deepseekkey.txt"):
+    
     if os.path.exists(file_path):
         with open(file_path, "r") as f:
             return f.read().strip()
     return os.environ.get("DEEPSEEK_API_KEY")
+
+def get_qwen_key(file_path="qwenkey.txt"):
+    """Get Qwen API key from file or environment variable"""
+    if os.path.exists(file_path):
+        with open(file_path, "r") as f:
+            return f.read().strip()
+    return os.environ.get("QWEN_API_KEY") or os.environ.get("DASHSCOPE_API_KEY")

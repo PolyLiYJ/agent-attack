@@ -198,5 +198,39 @@ safety_evaluation_*.json
 *_outputs/
 results_*/
 outputs_*/
-COCO2017/
-deep-learning*/
+
+# COCO dataset
+COCO*/
+coco*/
+*COCO*
+*coco*
+
+# ImageNet dataset
+ImageNet/
+imagenet/
+*ImageNet*
+*imagenet*
+
+# Cache directories
+.cache/
+*.cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-cache/
+.pip/
+.hypothesis/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+*.cover
+htmlcov/
+wandb/
+wandb/**/
+
+deep-learning-pytorch-huggingface/
