@@ -319,6 +319,7 @@ def call_gemini(
 ) -> str:
     """
     Call Google Gemini API using AI Studio REST API.
+    Supports both completion mode (list of strings) and chat mode (list of dicts).
     """
     import os
     import json
@@ -358,53 +359,48 @@ def call_gemini(
     base_url = "https://generativelanguage.googleapis.com/v1beta/models"
     url = f"{base_url}/{model}:generateContent?key={api_key}"
 
-    # Convert OpenAI messages format to Gemini contents format
+    # Build contents array for Gemini API
     contents = []
     system_instruction = None
-
+    
+    # Completion mode: messages is a list of strings
+    # All strings are concatenated into a single user message with images
+    parts = []
+    
     for msg in messages:
-        role = msg.get("role", "user")
-        content = msg.get("content", "")
-
-        # Handle both string and list content types
-        text_content = ""
-        if isinstance(content, str):
-            text_content = content
-        elif isinstance(content, list):
-            text_parts = []
-            for item in content:
-                if item.get("type") == "text":
-                    text_parts.append(item.get("text", ""))
-            text_content = "\n".join(text_parts)
-
-        # Map to Gemini roles
-        if role == "system":
-            system_instruction = {"parts": [{"text": text_content}]}
-        elif role == "user":
-            contents.append({"role": "user", "parts": [{"text": text_content}]})
-        elif role == "assistant":
-            contents.append({"role": "model", "parts": [{"text": text_content}]})
-
-    # Add images if provided (attach them to the last user message)
+        if isinstance(msg, str):
+            # Completion mode: treat each string as a text part
+            parts.append({"text": msg})
+        elif isinstance(msg, dict):
+            # Chat mode: extract content from dict
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            
+            if role == "system":
+                system_instruction = {"parts": [{"text": content}]}
+            elif isinstance(content, str):
+                parts.append({"text": content})
+            elif isinstance(content, list):
+                for item in content:
+                    if isinstance(item, dict) and item.get("type") == "text":
+                        parts.append({"text": item.get("text", "")})
+    
+    # Add images to parts
     if images:
-        image_parts = []
         for img in images:
             if isinstance(img, Image.Image):
                 buffered = BytesIO()
                 img.save(buffered, format="PNG")
                 img_base64 = base64.b64encode(buffered.getvalue()).decode()
-                image_parts.append({
+                parts.append({
                     "inlineData": {
                         "mimeType": "image/png",
                         "data": img_base64
                     }
                 })
-        
-        # Ensure there is a user message to attach the images to
-        if not contents or contents[-1]["role"] != "user":
-            contents.append({"role": "user", "parts": image_parts})
-        else:
-            contents[-1]["parts"].extend(image_parts)
+    
+    # Create contents with all parts
+    contents = [{"parts": parts}]
 
     # Build payload
     payload = {
