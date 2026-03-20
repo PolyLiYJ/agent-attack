@@ -50,6 +50,9 @@ def setup_environment():
     os.environ["https_proxy"] = "http://127.0.0.1:7890"
     print("✓ HTTP/HTTPS proxy set to 127.0.0.1:7890")
     
+    # Disable Playwright async check to avoid asyncio loop conflicts
+    os.environ["PLAYWRIGHT_DISABLE_ASYNC_CHECK"] = "1"
+    
     # Set up OpenAI API key
     import json
     
@@ -88,7 +91,10 @@ def test_visualwebarena_agent():
     print("="*80)
     
     # Setup environment: make sure local agent package is preferred
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'agent'))
+    # sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'agent'))
+    # The above was wrong and caused 'agent' to be seen as a module instead of a package
+    if os.path.dirname(__file__) not in sys.path:
+        sys.path.insert(0, os.path.dirname(__file__))
     
     # Set up OpenAI API key
     if os.path.exists("openaikey.txt"):
@@ -239,8 +245,8 @@ def test_all_gpt5_llm_configs():
     print("\nNote: All GPT-5 models should have temperature=1.0 (auto-adjusted)")
 
 
+# test_visualwebarena_agent()
 setup_environment()
-test_visualwebarena_agent()
 
 WEBSITE_CONFIG = {
     "classifieds": {
@@ -286,6 +292,7 @@ try:
         StateInfo,
         Trajectory,
         create_stop_action,
+        create_none_action,
     )
     from browser_env.helper_functions import get_action_description
     print("✓ browser_env 导入成功")
@@ -373,10 +380,18 @@ SUPPORTED_MODELS = {
     "qwen-2.5": {"type": "qwen", "vision": True},
     "qwen-2.5-vl-7b": {"type": "qwen", "vision": True},
     "qwen-max": {"type": "qwen", "vision": True},
+    "qwen3.5-Plus": {"type": "qwen", "vision": True},
+    "qwen3-235B-A22B": {"type": "qwen", "vision": True},
+    "qwen-plus": {"type": "qwen", "vision": True},
+    "qwen-turbo": {"type": "qwen", "vision": True},
+    "qwen-vl-max": {"type": "qwen", "vision": True},
+    "qwen-vl-plus": {"type": "qwen", "vision": True},
+    "qwen-max-longcontext": {"type": "qwen", "vision": True},
     
     # DeepSeek
     "deepseek-chat": {"type": "deepseek", "vision": False},
     "deepseek-vision": {"type": "deepseek", "vision": True},
+    "deepseek-multi-modal": {"type": "deepseek", "vision": True},
     
     # Anthropic Claude
     "claude-3-opus": {"type": "claude", "vision": True},
@@ -674,10 +689,7 @@ class MultiModelTester:
                         print(f"  保存对抗图像：{img_path}")
             
             # ========== 2. 构建环境和 Agent ==========
-            # 创建浏览器环境（禁用异步检查）
-            import os
-            os.environ["PLAYWRIGHT_DISABLE_ASYNC_CHECK"] = "1"
-            
+            # 创建浏览器环境
             env = ScriptBrowserEnv(
                 headless=True,
                 slow_mo=0,
@@ -744,23 +756,19 @@ class MultiModelTester:
             action = None
             # 执行一步推理和评估
             for step in range(max_steps):
-                # 模仿 LifelongAttack.py 的调用方式：使用关键字参数
-                # Handle tokenizer based on model provider
-                if self.args.provider != "openai":
-                    import tiktoken
-                    try:
-                        encoding = tiktoken.get_encoding("cl100k_base")  # Fallback encoding
-                        self.args.max_tokens = len(encoding.encode(user_intent)) + self.args.max_tokens  # Adjust if needed
-                    except Exception as e:
-                        print(f"Tokenizer error for {self.args.model}: {e}")
-                        action = {"action_type": "NONE", "raw_prediction": "Error in tokenizer"}
-                else:
+                # 调用 agent 获取下一个动作
+                # 对于非 openai provider，tokenizer 已在 agent 内部处理
+                try:
                     action = agent.next_action(
                         trajectory,
                         user_intent,
                         images=images,
                         meta_data=meta_data,
                     )
+                except Exception as e:
+                    print(f"  ⚠ Agent next_action 错误：{e}")
+                    action = create_none_action()
+                    action["raw_prediction"] = f"Error: {str(e)}"
 
                 trajectory.append(action)
                 
@@ -865,6 +873,14 @@ class MultiModelTester:
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
             }
             print(f"  错误：{e}")
+            
+            # 确保异常情况下也关闭环境
+            try:
+                if 'env' in locals():
+                    env.close()
+            except Exception:
+                pass
+            
             return error_result
     
     def _get_url(self, obs_text: str, som_id: int) -> str:
@@ -1033,11 +1049,11 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--viewport_height", type=int, default=2048)
     parser.add_argument("--save_trace_enabled", action="store_true")
     parser.add_argument("--sleep_after_execution", type=float, default=0.0)
-    parser.add_argument("--max_steps", type=int, default=1, help="最大执行步数（默认 1，即只执行一步就评估）")
+    parser.add_argument("--max_steps", type=int, default=5, help="最大执行步数（默认 1，即只执行一步就评估）")
 
     # Agent config
     parser.add_argument("--agent_type", type=str, default="prompt")
-    parser.add_argument("--instruction_path", type=str, default="agent/prompts/jsons/p_som_cot_id_actree_3s.json")
+    parser.add_argument("--instruction_path", type=str, default="agent/prompts/jsons/qwen_p_som_cot_id_actree_3s.json")
     parser.add_argument("--parsing_failure_th", type=int, default=3)
     parser.add_argument("--repeating_action_failure_th", type=int, default=5)
 
@@ -1053,7 +1069,7 @@ def parse_arguments() -> argparse.Namespace:
     # LLM config
     parser.add_argument("--provider", type=str, default="openai")
     parser.add_argument("--model", type=str, default="gpt-4o-mini")
-    parser.add_argument("--mode", type=str, default="chat")
+    parser.add_argument("--mode", type=str, default="completion")
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--top_p", type=float, default=0.9)
     parser.add_argument("--context_length", type=int, default=0)
@@ -1067,12 +1083,12 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--test_models",
         type=str,
-        default="gpt-5-chat-latest",
-        help="要测试的模型列表（逗号分隔）。您的 API 可用：gpt-5, gpt-5-mini, gpt-5-nano, gpt-5-codex, o3-2025-04-16, gpt-image-1.5"
+        default="gemini-2.5-flash",
+        help="要测试的模型列表（逗号分隔）。您的 API 可用：gpt-5, gpt-5-mini, gpt-5-nano, gpt-5-codex, o3-2025-04-16, gpt-image-1.5, qwen-max-latest,qwen-plus,qwen-max,qwen-max-longcontext"
     )
     parser.add_argument("--score_threshold", type=float, default=0.8)
     parser.add_argument("--output_dir", type=str, default="multi_model_attack_results")
-    parser.add_argument("--max_tasks", type=int, default=20)
+    parser.add_argument("--max_tasks", type=int, default=30, help="每个模型最多测试的任务数（默认 1）")
     parser.add_argument("--result_dir", type=str, default="multi_model_attack_results")
     parser.add_argument("--render_screenshot", action="store_true", default=True)
     parser.add_argument("--list_models", action="store_true")
@@ -1184,10 +1200,6 @@ def main():
         test_visualwebarena_agent()
         return
 
-    if args.test_llm_config:
-        test_all_gpt5_llm_configs()
-        return
-
     if args.list_models:
         print("\n=== 支持的模型 ===")
         for model_name, model_cfg in SUPPORTED_MODELS.items():
@@ -1237,8 +1249,22 @@ def main():
         print(f"测试模型：{model_name}")
         print('='*80)
         
+        # 根据模型名称自动设置 provider
+        model_lower = model_name.lower()
+        if "qwen" in model_lower:
+            args.provider = "qwen"
+        elif "deepseek" in model_lower:
+            args.provider = "deepseek"
+        elif "gemini" in model_lower:
+            args.provider = "gemini"  # Use "gemini" to match agent.py
+        elif "claude" in model_lower:
+            args.provider = "anthropic"
+        else:
+            args.provider = "openai"  # 默认 OpenAI
+        
         # 更新 args 中的 model
         args.model = model_name
+        print(f"[DEBUG] 设置 provider={args.provider}, model={args.model}")
         
         # 创建测试器
         tester = MultiModelTester(args, captioning_fn=captioning_fn)
@@ -1262,6 +1288,7 @@ def main():
 
 
 if __name__ == "__main__":
+    setup_environment()
     main()
 
 
