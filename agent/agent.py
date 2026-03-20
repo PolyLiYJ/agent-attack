@@ -53,7 +53,7 @@ MULTIMODAL_MODEL_CONFIGS = {
         "base_url": "https://api.deepseek.com",
     },
     # Google Gemini models
-    "gemini": {
+    "google": {
         "models": ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-2.0-flash",
                    "gemini-2.0-pro", "gemini-2.5-pro-preview", "gemini-2.5-flash",
                    "gemini-2.5-flash-lite"],
@@ -653,8 +653,8 @@ class PromptAgent(Agent):
                         images=all_images,
                         provider=provider,
                     )
-                # Use call_gemini for Gemini provider
-                elif provider == "gemini":
+                # Use call_gemini for Google provider
+                elif provider == "google":
                     response = call_gemini(
                         model=lm_config.model,
                         messages=prompt,

@@ -1256,7 +1256,7 @@ def main():
         elif "deepseek" in model_lower:
             args.provider = "deepseek"
         elif "gemini" in model_lower:
-            args.provider = "gemini"  # Use "gemini" to match agent.py
+            args.provider = "google"  # Use "google" to match agent.py
         elif "claude" in model_lower:
             args.provider = "anthropic"
         else:
