@@ -186,3 +186,17 @@ slurm-*
 
 exp_data
 api_keys.json
+
+# Safety evaluation results
+safety_evaluation_*.json
+
+# Model output results folders
+*/results/
+*/output/
+*/outputs/
+*_results/
+*_outputs/
+results_*/
+outputs_*/
+COCO2017/
+deep-learning*/

@@ -87,9 +87,8 @@ def test_visualwebarena_agent():
     print("Testing visualwebarena agent.py with GPT-5")
     print("="*80)
     
-    # Setup environment
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 
-                                    '..', 'visualwebarena'))
+    # Setup environment: make sure local agent package is preferred
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'agent'))
     
     # Set up OpenAI API key
     if os.path.exists("openaikey.txt"):
@@ -102,10 +101,9 @@ def test_visualwebarena_agent():
     os.environ["https_proxy"] = "http://127.0.0.1:7890"
     print("✓ HTTP/HTTPS proxy set")
     
-    # Import visualwebarena agent module
+    # Import local agent module (copied from visualwebarena)
     try:
         from agent.agent import construct_agent
-        print("✓ construct_agent imported from visualwebarena.agent.agent")
     except Exception as e:
         print(f"✗ Failed to import construct_agent: {e}")
         return
@@ -118,7 +116,7 @@ def test_visualwebarena_agent():
         mode="chat",
         agent_type="prompt",
         action_set_tag="som",
-        instruction_path="agent/prompts/jsons/p_gpt5_multimodal_cot_id_actree_3s.json",
+        instruction_path="/home/yjli/Agent/agent-attack/agent/prompts/jsons/p_gpt5_multimodal_cot_id_actree_3s.json",
         temperature=1.0,  # GPT-5 requires temperature=1.0
         top_p=0.9,
         context_length=4096,
